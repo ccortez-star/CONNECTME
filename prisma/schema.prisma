@@ -1,0 +1,281 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id               String   @id @default(cuid())
+  name             String
+  defaultTimezone  String   @default("America/New_York")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  users            User[]
+  locations        Location[]
+  categories       Category[]
+  classOfferings   ClassOffering[]
+  classSessions    ClassSession[]
+  customers        Customer[]
+  settings         PlatformSetting[]
+  policyVersions   PolicyVersion[]
+  auditLogs        AuditLog[]
+  reservations     Reservation[]
+}
+
+model PlatformSetting {
+  id                           String       @id @default(cuid())
+  organizationId               String
+  organization                 Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  defaultClassPriceCents       Int
+  extendedProtectionPriceCents Int
+  currency                     String       @default("USD")
+  holdMinutes                  Int          @default(15)
+  updatedAt                    DateTime     @updatedAt
+
+  @@unique([organizationId])
+}
+
+model PolicyVersion {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  version        String
+  body           String
+  effectiveAt    DateTime     @default(now())
+  createdAt      DateTime     @default(now())
+
+  acceptances    PolicyAcceptance[]
+}
+
+model User {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String
+  name           String
+  passwordHash   String
+  role           String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  permissions    UserPermission[]
+  assignments    SessionInstructor[]
+  sessions       StaffSession[]
+  auditLogs      AuditLog[]
+  attendanceMarked Attendance[] @relation("MarkedBy")
+  refundsInitiated Refund[]     @relation("RefundActor")
+
+  @@unique([organizationId, email])
+}
+
+model UserPermission {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key    String
+
+  @@unique([userId, key])
+}
+
+model StaffSession {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Location {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  address        String?
+  timezone       String?
+  classSessions  ClassSession[]
+}
+
+model Category {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  slug           String
+  classSessions  ClassSession[]
+
+  @@unique([organizationId, slug])
+}
+
+model ClassOffering {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  description    String       @default("")
+  recurrenceRule String?
+  createdAt      DateTime     @default(now())
+  sessions       ClassSession[]
+}
+
+model ClassSession {
+  id                      String       @id @default(cuid())
+  organizationId          String
+  organization            Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  offeringId              String?
+  offering                ClassOffering? @relation(fields: [offeringId], references: [id])
+  locationId              String
+  location                Location     @relation(fields: [locationId], references: [id])
+  categoryId              String
+  category                Category     @relation(fields: [categoryId], references: [id])
+  name                    String
+  description             String       @default("")
+  startsAt                DateTime
+  endsAt                  DateTime
+  timezone                String
+  capacity                Int
+  priceOverrideCents      Int?
+  protectionOverrideCents Int?
+  status                  String
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
+
+  instructors             SessionInstructor[]
+  reservations            Reservation[]
+}
+
+model SessionInstructor {
+  id             String       @id @default(cuid())
+  classSessionId String
+  classSession   ClassSession @relation(fields: [classSessionId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([classSessionId, userId])
+}
+
+model Customer {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  email          String
+  phone          String?
+  createdAt      DateTime     @default(now())
+
+  reservations   Reservation[]
+
+  @@unique([organizationId, email])
+}
+
+model Reservation {
+  id                         String       @id @default(cuid())
+  organizationId             String
+  organization               Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customerId                 String
+  customer                   Customer     @relation(fields: [customerId], references: [id])
+  classSessionId             String
+  classSession               ClassSession @relation(fields: [classSessionId], references: [id])
+  instructorId               String?
+  purchaseAt                 DateTime
+  classStartAt               DateTime
+  classTimezone              String
+  classPriceCents            Int
+  protectionPriceCents       Int
+  protectionPurchased        Boolean      @default(false)
+  standardRefundDeadlineAt   DateTime?
+  extendedRefundDeadlineAt   DateTime?
+  paymentProvider            String?
+  paymentTransactionId       String?
+  paymentStatus              String       @default("PENDING")
+  refundStatus               String       @default("NONE")
+  refundedAt                 DateTime?
+  policyVersion              String
+  policyAcceptedAt           DateTime?
+  status                     String
+  holdExpiresAt              DateTime?
+  createdAt                  DateTime     @default(now())
+  updatedAt                  DateTime     @updatedAt
+
+  payment                    Payment?
+  policyAcceptance           PolicyAcceptance?
+  attendance                 Attendance?
+  refunds                    Refund[]
+}
+
+model Payment {
+  id                 String      @id @default(cuid())
+  reservationId      String      @unique
+  reservation        Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  provider           String
+  providerPaymentId  String      @unique
+  status             String
+  amountCents        Int
+  currency           String
+  methodType         String?
+  metadataJson       String      @default("{}")
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+}
+
+model PolicyAcceptance {
+  id                    String        @id @default(cuid())
+  reservationId         String        @unique
+  reservation           Reservation   @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  customerId            String
+  policyVersionId       String
+  policyVersion         PolicyVersion @relation(fields: [policyVersionId], references: [id])
+  policyVersionLabel    String
+  policyBody            String
+  acceptedAt            DateTime
+  purchaseAt            DateTime
+  applicableDeadlineAt  DateTime?
+}
+
+model Refund {
+  id                 String      @id @default(cuid())
+  reservationId      String
+  reservation        Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  initiatedByUserId  String?
+  initiatedBy        User?       @relation("RefundActor", fields: [initiatedByUserId], references: [id])
+  amountCents        Int
+  providerRefundId   String?
+  status             String
+  createdAt          DateTime    @default(now())
+}
+
+model Attendance {
+  id             String      @id @default(cuid())
+  reservationId  String      @unique
+  reservation    Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  status         String      @default("UNKNOWN")
+  markedById     String?
+  markedBy       User?       @relation("MarkedBy", fields: [markedById], references: [id])
+  markedAt       DateTime?
+}
+
+model AuditLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String?
+  user           User?        @relation(fields: [userId], references: [id])
+  action         String
+  resourceType   String
+  resourceId     String
+  previousJson   String       @default("{}")
+  newJson        String       @default("{}")
+  createdAt      DateTime     @default(now())
+}
+
+model ProcessedWebhookEvent {
+  id        String   @id @default(cuid())
+  provider  String
+  eventId   String
+  createdAt DateTime @default(now())
+
+  @@unique([provider, eventId])
+}
